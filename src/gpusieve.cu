@@ -13,8 +13,7 @@ additions public too, so that others may benefit from your work.
 */
 
 #include <stdio.h>
-#include <cuda.h>
-#include <cuda_runtime.h>  
+#include <hip/hip_runtime.h>
 
 #include "params.h"
 #include "my_types.h"
@@ -95,11 +94,11 @@ uint32 primes_per_thread = 0;		// Number of "rows" in the GPU sieving info array
 // This will output the proper CUDA error strings in the event that a CUDA host call returns an error
 #define checkCudaErrors(err)  __checkCudaErrors (err, __FILE__, __LINE__)
 
-inline void __checkCudaErrors(cudaError err, const char *file, const int line )
+inline void __checkCudaErrors(hipError_t err, const char *file, const int line )
 {
-	if(cudaSuccess != err)
+	if(hipSuccess != err)
 	{
-		fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",file, line, (int)err, cudaGetErrorString( err ) );
+		fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",file, line, (int)err, hipGetErrorString( err ) );
 		exit(-1);
 	}
 }
@@ -1270,15 +1269,15 @@ static	int	gpusieve_initialized = 0;
 	gpusieve_initialized = 1;
 
 	// Prefer 48KB shared memory
-	cudaThreadSetCacheConfig(cudaFuncCachePreferShared);
+	hipDeviceSetCacheConfig(hipFuncCachePreferShared);
 
 	// Allocate the big sieve array (default is 128M bits)
-	checkCudaErrors (cudaMalloc ((void**) &mystuff->d_bitarray, mystuff->gpu_sieve_size / 8));
+	checkCudaErrors (hipMalloc ((void**) &mystuff->d_bitarray, mystuff->gpu_sieve_size / 8));
 
 #ifdef RAW_GPU_BENCH
 	// Quick hack to eliminate sieve time from GPU-code benchmarks.  Can also be used
 	// to isolate a bug by eliminating the GPU sieving code as a possible cause.
-	checkCudaErrors (cudaMemset (mystuff->d_bitarray, 0xFF, mystuff->gpu_sieve_size / 8));
+	checkCudaErrors (hipMemset (mystuff->d_bitarray, 0xFF, mystuff->gpu_sieve_size / 8));
 #endif  
 
 #undef pinfo32
@@ -1564,12 +1563,12 @@ static	int	gpusieve_initialized = 0;
 	}
 
 	// Allocate and copy the device compressed prime sieving info
-	checkCudaErrors (cudaMalloc ((void**) &mystuff->d_sieve_info, pinfo_size));
-	checkCudaErrors (cudaMemcpy (mystuff->d_sieve_info, pinfo, pinfo_size, cudaMemcpyHostToDevice));
+	checkCudaErrors (hipMalloc ((void**) &mystuff->d_sieve_info, pinfo_size));
+	checkCudaErrors (hipMemcpy (mystuff->d_sieve_info, pinfo, pinfo_size, hipMemcpyHostToDevice));
 
 	// Allocate and copy the device row info, primes and modular inverses info used to calculate bit-to-clear
-	checkCudaErrors (cudaMalloc ((void**) &mystuff->d_calc_bit_to_clear_info, rowinfo_size));
-	checkCudaErrors (cudaMemcpy (mystuff->d_calc_bit_to_clear_info, rowinfo, rowinfo_size, cudaMemcpyHostToDevice));
+	checkCudaErrors (hipMalloc ((void**) &mystuff->d_calc_bit_to_clear_info, rowinfo_size));
+	checkCudaErrors (hipMemcpy (mystuff->d_calc_bit_to_clear_info, rowinfo, rowinfo_size, hipMemcpyHostToDevice));
 
 	// Free allocated memory
 	free (primes);
@@ -1596,7 +1595,7 @@ static uint32	last_exponent_initialized = 0;
 
 	// Calculate the modular inverses that will be used by each class to calculate initial bit-to-clear for each prime
 	CalcModularInverses<<<primes_per_thread+1, threadsPerBlock>>>(mystuff->exponent, (int *)mystuff->d_calc_bit_to_clear_info);
-	cudaThreadSynchronize ();
+	hipDeviceSynchronize ();
 }
 
 
@@ -1618,7 +1617,7 @@ void gpusieve_init_class (mystuff_t *mystuff, unsigned long long k_min)
 
 	// Calculate the initial bit-to-clear for each prime
 	CalcBitToClear<<<primes_per_thread+1, threadsPerBlock>>>(mystuff->exponent, k_base, (int *)mystuff->d_calc_bit_to_clear_info, (uint8 *)mystuff->d_sieve_info);
-	cudaThreadSynchronize ();
+	hipDeviceSynchronize ();
 }
 
 
@@ -1642,6 +1641,6 @@ void gpusieve (mystuff_t *mystuff, unsigned long long num_k_remaining)
 
 	// Do some sieving on the GPU!
 	SegSieve<<<(sieve_size + block_size - 1) / block_size, threadsPerBlock>>>((uint8 *)mystuff->d_bitarray, (uint8 *)mystuff->d_sieve_info, primes_per_thread);
-	cudaThreadSynchronize ();
+	hipDeviceSynchronize ();
 }
 

@@ -25,8 +25,7 @@ along with mfaktc.  If not, see <http://www.gnu.org/licenses/>.
 #include <errno.h> 
 #include <time.h>
 
-#include <cuda.h>
-#include <cuda_runtime.h>  
+#include <hip/hip_runtime.h>
 
 #include "params.h"
 #include "my_types.h"
@@ -145,14 +144,14 @@ kernel: see my_types.h -> enum GPUKernels
 
 return value (mystuff->mode = MODE_NORMAL):
 number of factors found
-RET_CUDA_ERROR cudaGetLastError() returned an error
+RET_CUDA_ERROR hipGetLastError() returned an error
 RET_QUIT if early exit was requested by SIGINT
 
 return value (mystuff->mode = MODE_SELFTEST_SHORT or MODE_SELFTEST_FULL):
 0 for a successfull selftest (known factor was found)
 1 no factor found
 2 wrong factor returned
-RET_CUDA_ERROR cudaGetLastError() returned an error
+RET_CUDA_ERROR hipGetLastError() returned an error
 
 other return value 
 -1 unknown mode
@@ -167,7 +166,7 @@ other return value
 
   int retval = 0;
   
-  cudaError_t cudaError;
+  hipError_t hipError;
   
   unsigned long long int time_run, time_est;
   
@@ -376,11 +375,11 @@ see benchmarks in src/kernel_benchmarks.txt */
           logprintf(mystuff, "ERROR: Unknown kernel selected (%d)!\n", kernel);
           return RET_CUDA_ERROR;
         }
-        cudaError = cudaGetLastError();
-        if(cudaError != cudaSuccess)
+        hipError = hipGetLastError();
+        if(hipError != hipSuccess)
         {
-          logprintf(mystuff, "ERROR: cudaGetLastError() returned %d: %s\n", cudaError, cudaGetErrorString(cudaError));
-          return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by cudaGetLastError())... */
+          logprintf(mystuff, "ERROR: hipGetLastError() returned %d: %s\n", hipError, hipGetErrorString(hipError));
+          return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by hipGetLastError())... */
         }
         factorsfound += numfactors;
         if(mystuff->mode == MODE_NORMAL)
@@ -534,7 +533,7 @@ type = 1: small selftest (this is executed EACH time mfaktc is started)
 return value
 0 selftest passed
 1 selftest failed
-RET_CUDA_ERROR we might have a serios problem (detected by cudaGetLastError())
+RET_CUDA_ERROR we might have a serios problem (detected by hipGetLastError())
 */
 {
   int i, j, tf_res, st_success=0, st_nofactor=0, st_wrongfactor=0, st_unknown=0;
@@ -605,7 +604,7 @@ RET_CUDA_ERROR we might have a serios problem (detected by cudaGetLastError())
              if(tf_res == 0)st_success++;
         else if(tf_res == 1)st_nofactor++;
         else if(tf_res == 2)st_wrongfactor++;
-        else if(tf_res == RET_CUDA_ERROR)return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by cudaGetLastError())... */
+        else if(tf_res == RET_CUDA_ERROR)return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by hipGetLastError())... */
         else           st_unknown++;
         
         if(tf_res == 0)kernel_success[kernels[j]]++;
@@ -661,7 +660,7 @@ RET_CUDA_ERROR we might have a serios problem (detected by cudaGetLastError())
              if(tf_res == 0)st_success++;
         else if(tf_res == 1)st_nofactor++;
         else if(tf_res == 2)st_wrongfactor++;
-        else if(tf_res == RET_CUDA_ERROR)return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by cudaGetLastError())... */
+        else if(tf_res == RET_CUDA_ERROR)return RET_CUDA_ERROR; /* bail out, we might have a serios problem (detected by hipGetLastError())... */
         else           st_unknown++;
       }
       while(j>0);
@@ -722,14 +721,14 @@ RET_CUDA_ERROR we might have a serios problem (detected by cudaGetLastError())
 
 
 void print_last_CUDA_error(mystuff_t *mystuff)
-/* just run cudaGetLastError() and print the error message if its return value is not cudaSuccess */
+/* just run hipGetLastError() and print the error message if its return value is not hipSuccess */
 {
-  cudaError_t cudaError;
+  hipError_t hipError;
   
-  cudaError = cudaGetLastError();
-  if(cudaError != cudaSuccess)
+  hipError = hipGetLastError();
+  if(hipError != hipSuccess)
   {
-    logprintf(mystuff, "  cudaGetLastError() returned %d: %s\n", cudaError, cudaGetErrorString(cudaError));
+    logprintf(mystuff, "  hipGetLastError() returned %d: %s\n", hipError, hipGetErrorString(hipError));
   }
 }
 
@@ -741,7 +740,7 @@ int main(int argc, char **argv)
   int parse_ret = -1;
   int devicenumber = 0;
   mystuff_t mystuff;
-  struct cudaDeviceProp deviceinfo;
+  struct hipDeviceProp_t deviceinfo;
   int i, tmp = 0;
   char *ptr;
   int use_worktodo = 1;
@@ -933,9 +932,9 @@ int main(int argc, char **argv)
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "\nCUDA version info\n");
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "  binary compiled for CUDA  %d.%d\n", CUDART_VERSION/1000, CUDART_VERSION%100);
 #if CUDART_VERSION >= 2020
-  cudaRuntimeGetVersion(&rt_ver);
+  hipRuntimeGetVersion(&rt_ver);
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "  CUDA runtime version      %d.%d\n", rt_ver/1000, rt_ver%100);
-  cudaDriverGetVersion(&drv_ver);  
+  hipDriverGetVersion(&drv_ver);  
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "  CUDA driver version       %d.%d\n", drv_ver/1000, drv_ver%100);
   
   if(drv_ver < CUDART_VERSION)
@@ -953,15 +952,15 @@ int main(int argc, char **argv)
   }
 #endif  
 
-  if(cudaSetDevice(devicenumber)!=cudaSuccess)
+  if(hipSetDevice(devicenumber)!=hipSuccess)
   {
-    logprintf(&mystuff, "cudaSetDevice(%d) failed\n",devicenumber);
+    logprintf(&mystuff, "hipSetDevice(%d) failed\n",devicenumber);
     print_last_CUDA_error(&mystuff);
     close_log(&mystuff);
     return 1;
   }
 
-  cudaGetDeviceProperties(&deviceinfo, devicenumber);
+  hipGetDeviceProperties(&deviceinfo, devicenumber);
   mystuff.compcapa_major = deviceinfo.major;
   mystuff.compcapa_minor = deviceinfo.minor;
 #if CUDART_VERSION >= 6050
@@ -1016,7 +1015,7 @@ int main(int argc, char **argv)
   }
 
   // Don't do a CPU spin loop waiting for the GPU
-  cudaSetDeviceFlags(cudaDeviceBlockingSync);
+  hipSetDeviceFlags(hipDeviceScheduleBlockingSync );
 
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "\nAutomatic parameters\n");
 #if CUDART_VERSION >= 2000
@@ -1041,9 +1040,9 @@ int main(int argc, char **argv)
   
   for(i=0;i<mystuff.num_streams;i++)
   {
-    if( cudaStreamCreate(&(mystuff.stream[i])) != cudaSuccess)
+    if( hipStreamCreate(&(mystuff.stream[i])) != hipSuccess)
     {
-      logprintf(&mystuff, "ERROR: cudaStreamCreate() failed for stream %d\n", i);
+      logprintf(&mystuff, "ERROR: hipStreamCreate() failed for stream %d\n", i);
       print_last_CUDA_error(&mystuff);
       close_log(&mystuff);
       return 1;
@@ -1052,9 +1051,9 @@ int main(int argc, char **argv)
 /* Allocate some memory arrays */  
   for(i=0;i<(mystuff.num_streams + mystuff.cpu_streams);i++)
   {
-    if( cudaHostAlloc((void**)&(mystuff.h_ktab[i]), mystuff.threads_per_grid * sizeof(int), 0) != cudaSuccess )
+    if( hipHostAlloc((void**)&(mystuff.h_ktab[i]), mystuff.threads_per_grid * sizeof(int), 0) != hipSuccess )
     {
-      logprintf(&mystuff, "ERROR: cudaHostAlloc(h_ktab[%d]) failed\n", i);
+      logprintf(&mystuff, "ERROR: hipHostAlloc(h_ktab[%d]) failed\n", i);
       print_last_CUDA_error(&mystuff);
       close_log(&mystuff);
       return 1;
@@ -1062,39 +1061,39 @@ int main(int argc, char **argv)
   }
   for(i=0;i<mystuff.num_streams;i++)
   {
-    if( cudaMalloc((void**)&(mystuff.d_ktab[i]), mystuff.threads_per_grid * sizeof(int)) != cudaSuccess )
+    if( hipMalloc((void**)&(mystuff.d_ktab[i]), mystuff.threads_per_grid * sizeof(int)) != hipSuccess )
     {
-      logprintf(&mystuff, "ERROR: cudaMalloc(d_ktab1[%d]) failed\n", i);
+      logprintf(&mystuff, "ERROR: hipMalloc(d_ktab1[%d]) failed\n", i);
       print_last_CUDA_error(&mystuff);
       close_log(&mystuff);
       return 1;
     }
   }
-  if( cudaHostAlloc((void**)&(mystuff.h_RES),32 * sizeof(int), 0) != cudaSuccess )
+  if( hipHostAlloc((void**)&(mystuff.h_RES),32 * sizeof(int), 0) != hipSuccess )
   {
-    logprintf(&mystuff, "ERROR: cudaHostAlloc(h_RES) failed\n");
+    logprintf(&mystuff, "ERROR: hipHostAlloc(h_RES) failed\n");
     print_last_CUDA_error(&mystuff);
     close_log(&mystuff);
     return 1;
   }
-  if( cudaMalloc((void**)&(mystuff.d_RES), 32 * sizeof(int)) != cudaSuccess )
+  if( hipMalloc((void**)&(mystuff.d_RES), 32 * sizeof(int)) != hipSuccess )
   {
-    logprintf(&mystuff, "ERROR: cudaMalloc(d_RES) failed\n");
+    logprintf(&mystuff, "ERROR: hipMalloc(d_RES) failed\n");
     print_last_CUDA_error(&mystuff);
     close_log(&mystuff);
     return 1;
   }
 #ifdef DEBUG_GPU_MATH
-  if( cudaHostAlloc((void**)&(mystuff.h_modbasecase_debug), 32 * sizeof(int), 0) != cudaSuccess )
+  if( hipHostAlloc((void**)&(mystuff.h_modbasecase_debug), 32 * sizeof(int), 0) != hipSuccess )
   {
-    logprintf(&mystuff, "ERROR: cudaHostAlloc(h_modbasecase_debug) failed\n");
+    logprintf(&mystuff, "ERROR: hipHostAlloc(h_modbasecase_debug) failed\n");
     print_last_CUDA_error(&mystuff);
     close_log(&mystuff);
     return 1;
   }
-  if( cudaMalloc((void**)&(mystuff.d_modbasecase_debug), 32 * sizeof(int)) != cudaSuccess )
+  if( hipMalloc((void**)&(mystuff.d_modbasecase_debug), 32 * sizeof(int)) != hipSuccess )
   {
-    logprintf(&mystuff, "ERROR: cudaMalloc(d_modbasecase_debug) failed\n");
+    logprintf(&mystuff, "ERROR: hipMalloc(d_modbasecase_debug) failed\n");
     print_last_CUDA_error(&mystuff);
     close_log(&mystuff);
     return 1;
@@ -1179,7 +1178,7 @@ int main(int argc, char **argv)
 //          tmp = tf(&mystuff, 0, 0, BARRETT92_MUL32_GS);
           
           
-          if(tmp == RET_CUDA_ERROR) return 1; /* bail out, we might have a serios problem (detected by cudaGetLastError())... */
+          if(tmp == RET_CUDA_ERROR) return 1; /* bail out, we might have a serios problem (detected by hipGetLastError())... */
 
           if(tmp != RET_QUIT)
           {
@@ -1218,22 +1217,22 @@ int main(int argc, char **argv)
 
   for(i=0;i<mystuff.num_streams;i++)
   {
-    cudaStreamDestroy(mystuff.stream[i]);
+    hipStreamDestroy(mystuff.stream[i]);
   }
 #ifdef DEBUG_GPU_MATH
-  cudaFree(mystuff.d_modbasecase_debug);
-  cudaFree(mystuff.h_modbasecase_debug);
+  hipFree(mystuff.d_modbasecase_debug);
+  hipFree(mystuff.h_modbasecase_debug);
 #endif  
-  cudaFree(mystuff.d_RES);
-  cudaFree(mystuff.h_RES);
-  for(i=0;i<(mystuff.num_streams + mystuff.cpu_streams);i++)cudaFreeHost(mystuff.h_ktab[i]);
-  for(i=0;i<mystuff.num_streams;i++)cudaFree(mystuff.d_ktab[i]);
+  hipFree(mystuff.d_RES);
+  hipFree(mystuff.h_RES);
+  for(i=0;i<(mystuff.num_streams + mystuff.cpu_streams);i++)hipFreeHost(mystuff.h_ktab[i]);
+  for(i=0;i<mystuff.num_streams;i++)hipFree(mystuff.d_ktab[i]);
   sieve_free();
 
   // Free GPU sieve data structures
-  cudaFree(mystuff.d_bitarray);
-  cudaFree(mystuff.d_sieve_info);
-  cudaFree(mystuff.d_calc_bit_to_clear_info);
+  hipFree(mystuff.d_bitarray);
+  hipFree(mystuff.d_sieve_info);
+  hipFree(mystuff.d_calc_bit_to_clear_info);
   close_log(&mystuff);
   return 0;
 }

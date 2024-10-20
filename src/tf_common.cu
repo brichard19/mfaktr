@@ -54,7 +54,7 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
 {
   size_t size = mystuff->threads_per_grid * sizeof(int);
   int i, index = 0, stream;
-  cudaError_t cuda_ret;
+  hipError_t hip_ret;
   timeval timer;
   timeval timer2;
   unsigned long long int twait = 0;
@@ -122,13 +122,13 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
 
 
 /* set result array to 0 */  
-  cudaMemset(mystuff->d_RES, 0, 1*sizeof(int)); //first int of result array contains the number of factors found
+  hipMemset(mystuff->d_RES, 0, 1*sizeof(int)); //first int of result array contains the number of factors found
 //  for(i=0;i<32;i++)mystuff->h_RES[i]=0;
-//  cudaMemcpy(mystuff->d_RES, mystuff->h_RES, 32*sizeof(int), cudaMemcpyHostToDevice);
+//  hipMemcpy(mystuff->d_RES, mystuff->h_RES, 32*sizeof(int), hipMemcpyHostToDevice);
 
 #ifdef DEBUG_GPU_MATH  
-//  cudaMemcpy(mystuff->d_modbasecase_debug, mystuff->h_RES, 32*sizeof(int), cudaMemcpyHostToDevice);
-  cudaMemset(mystuff->d_modbasecase_debug, 0, 32*sizeof(int));
+//  hipMemcpy(mystuff->d_modbasecase_debug, mystuff->h_RES, 32*sizeof(int), hipMemcpyHostToDevice);
+  hipMemset(mystuff->d_modbasecase_debug, 0, 32*sizeof(int));
 #endif
 
   timer_init(&timer2);
@@ -166,7 +166,7 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
       a) all GPU streams are busy 
       and
       b) we've preprocessed all available CPU streams
-      so let's sleep for some time instead of running a busy loop on cudaStreamQuery() */
+      so let's sleep for some time instead of running a busy loop on hipStreamQuery() */
       my_usleep(delay);
 
       delay = delay * 3 / 2;
@@ -178,7 +178,7 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
     stream = 0;
     while((stream < mystuff->num_streams) && (h_ktab_index > 0))
     {
-      if(cudaStreamQuery(mystuff->stream[stream]) == cudaSuccess)
+      if(hipStreamQuery(mystuff->stream[stream]) == hipSuccess)
       {
 #ifdef DEBUG_STREAM_SCHEDULE
         printf(" STREAM_SCHEDULE: found empty stream: = %d (this releases h_ktab[%d])\n", stream, h_ktab_inuse[stream]);
@@ -188,7 +188,7 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
         h_ktab_inuse[stream]     = h_ktab_cpu[h_ktab_index];
         h_ktab_cpu[h_ktab_index] = i;
 
-        cudaMemcpyAsync(mystuff->d_ktab[stream], mystuff->h_ktab[h_ktab_inuse[stream]], size, cudaMemcpyHostToDevice, mystuff->stream[stream]);
+        hipMemcpyAsync(mystuff->d_ktab[stream], mystuff->h_ktab[h_ktab_inuse[stream]], size, hipMemcpyHostToDevice, mystuff->stream[stream]);
 
 #ifdef TF_72BIT    
         k_base.d0 =  k_min_grid[h_ktab_index] & 0xFFFFFF;
@@ -213,7 +213,7 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
         printf(" STREAM_SCHEDULE: started GPU kernel on stream %d using h_ktab[%d]\n\n", stream, h_ktab_inuse[stream]);
 #endif
 #ifdef DEBUG_GPU_MATH
-        cudaThreadSynchronize(); /* needed to get the output from device printf() */
+        hipThreadSynchronize(); /* needed to get the output from device printf() */
 #endif
 #ifdef DEBUG_STREAM_SCHEDULE_CHECK
         int j, index_count;
@@ -239,14 +239,14 @@ extern "C" __host__ int tf_class_barrett92(unsigned long long int k_min, unsigne
   }
 
 /* wait to finish the current calculations on the device */
-  cuda_ret = cudaThreadSynchronize();
-  if(cuda_ret != cudaSuccess)printf("per class final cudaThreadSynchronize failed!\n");
+  hip_ret = hipDeviceSynchronize();
+  if(hip_ret != hipSuccess)printf("per class final hipThreadSynchronize failed!\n");
 
 /* download results from GPU */
-  cudaMemcpy(mystuff->h_RES, mystuff->d_RES, 32*sizeof(int), cudaMemcpyDeviceToHost);
+  hipMemcpy(mystuff->h_RES, mystuff->d_RES, 32*sizeof(int), hipMemcpyDeviceToHost);
 
 #ifdef DEBUG_GPU_MATH
-  cudaMemcpy(mystuff->h_modbasecase_debug, mystuff->d_modbasecase_debug, 32*sizeof(int), cudaMemcpyDeviceToHost);
+  hipMemcpy(mystuff->h_modbasecase_debug, mystuff->d_modbasecase_debug, 32*sizeof(int), hipMemcpyDeviceToHost);
   for(i=0;i<32;i++)if(mystuff->h_modbasecase_debug[i] != 0)printf("h_modbasecase_debug[%2d] = %u\n", i, mystuff->h_modbasecase_debug[i]);
 #endif  
 

@@ -95,10 +95,10 @@ extern "C" __host__ int tf_class_barrett92_gs(unsigned long long int k_min, unsi
   else             b_preinit.d5=1<<(ln2b-160);	// b_preinit = 2^ln2b
 
 /* set result array to 0 */  
-  cudaMemset(mystuff->d_RES, 0, 1*sizeof(int)); //first int of result array contains the number of factors found
+  hipMemset(mystuff->d_RES, 0, 1*sizeof(int)); //first int of result array contains the number of factors found
 
 #ifdef DEBUG_GPU_MATH  
-  cudaMemset(mystuff->d_modbasecase_debug, 0, 32*sizeof(int));
+  hipMemset(mystuff->d_modbasecase_debug, 0, 32*sizeof(int));
 #endif
 
   // Calculate the initial bit-to-clear values for this class
@@ -166,7 +166,7 @@ extern "C" __host__ int tf_class_barrett92_gs(unsigned long long int k_min, unsi
                                                                        );
 
     // Sync before doing more GPU sieving
-    cudaThreadSynchronize();
+    hipDeviceSynchronize();
 
     // Count the number of blocks processed
     count += numblocks;
@@ -182,10 +182,10 @@ extern "C" __host__ int tf_class_barrett92_gs(unsigned long long int k_min, unsi
   }
 
 /* download results from GPU */
-  cudaMemcpy(mystuff->h_RES, mystuff->d_RES, 32*sizeof(int), cudaMemcpyDeviceToHost);
+  hipMemcpy(mystuff->h_RES, mystuff->d_RES, 32*sizeof(int), hipMemcpyDeviceToHost);
 
 #ifdef DEBUG_GPU_MATH
-  cudaMemcpy(mystuff->h_modbasecase_debug, mystuff->d_modbasecase_debug, 32*sizeof(int), cudaMemcpyDeviceToHost);
+  hipMemcpy(mystuff->h_modbasecase_debug, mystuff->d_modbasecase_debug, 32*sizeof(int), hipMemcpyDeviceToHost);
   for(i=0;i<32;i++)if(mystuff->h_modbasecase_debug[i] != 0)printf("h_modbasecase_debug[%2d] = %u\n", i, mystuff->h_modbasecase_debug[i]);
 #endif  
 

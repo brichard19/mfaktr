@@ -68,7 +68,7 @@ typedef struct
 
 typedef struct
 {
-  cudaStream_t stream[NUM_STREAMS_MAX];
+  hipStream_t stream[NUM_STREAMS_MAX];
   unsigned int *h_ktab[NUM_STREAMS_MAX+CPU_STREAMS_MAX];
   unsigned int *d_ktab[NUM_STREAMS_MAX];
   unsigned int *h_RES;
