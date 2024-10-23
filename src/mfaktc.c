@@ -928,9 +928,11 @@ int main(int argc, char **argv)
 
   read_config(&mystuff);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   int drv_ver, rt_ver;
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "\nCUDA version info\n");
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "  binary compiled for CUDA  %d.%d\n", CUDART_VERSION/1000, CUDART_VERSION%100);
+
 #if CUDART_VERSION >= 2020
   hipRuntimeGetVersion(&rt_ver);
   if(mystuff.verbosity >= 1)logprintf(&mystuff, "  CUDA runtime version      %d.%d\n", rt_ver/1000, rt_ver%100);
@@ -951,6 +953,7 @@ int main(int argc, char **argv)
     return 1;
   }
 #endif  
+#endif
 
   if(hipSetDevice(devicenumber)!=hipSuccess)
   {
@@ -963,12 +966,17 @@ int main(int argc, char **argv)
   hipGetDeviceProperties(&deviceinfo, devicenumber);
   mystuff.compcapa_major = deviceinfo.major;
   mystuff.compcapa_minor = deviceinfo.minor;
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if CUDART_VERSION >= 6050
   mystuff.max_shared_memory = (int)deviceinfo.sharedMemPerMultiprocessor;
 #else
   if(mystuff.compcapa_major == 1)mystuff.max_shared_memory = 16384; /* assume 16kiB for CC 1.x */
   else                           mystuff.max_shared_memory = 49152; /* assume 48kiB for all other */
 #endif
+#else
+  mystuff.max_shared_memory = (int)deviceinfo.sharedMemPerMultiprocessor;
+#endif
+
   if(mystuff.verbosity >= 1)
   {
     logprintf(&mystuff, "\nCUDA device info\n");
@@ -994,7 +1002,12 @@ int main(int argc, char **argv)
     }
     
     logprintf(&mystuff, "  clock rate (CUDA cores)   %dMHz\n", deviceinfo.clockRate / 1000);
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if CUDART_VERSION >= 5000
+    logprintf(&mystuff, "  memory clock rate:        %dMHz\n", deviceinfo.memoryClockRate / 1000);
+    logprintf(&mystuff, "  memory bus width:         %d bit\n", deviceinfo.memoryBusWidth);
+#endif
+#else
     logprintf(&mystuff, "  memory clock rate:        %dMHz\n", deviceinfo.memoryClockRate / 1000);
     logprintf(&mystuff, "  memory bus width:         %d bit\n", deviceinfo.memoryBusWidth);
 #endif

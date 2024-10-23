@@ -65,7 +65,7 @@ there. */
   }
 }
 
-
+#ifdef __HIP_PLATFORM_NVIDIA__
 __device__ static void create_FC96(int96 *f, unsigned int exp, int96 k, unsigned int k_offset)
 /* calculates f = 2 * (k+k_offset) * exp + 1 */
 {
@@ -87,15 +87,44 @@ __device__ static void create_FC96(int96 *f, unsigned int exp, int96 k, unsigned
   if(exp96.d1) /* exp96.d1 is 0 or 1 */
   {
     f->d1 = __add_cc(f->d1, k.d0);
-    f->d2 = __addc  (f->d2, k.d1);  
+    f->d2 = __addc  (f->d2, k.d1);
   }							// f = 2 * k * exp + 1
 }
+#else
+__device__ static void create_FC96(int96 *f, unsigned int exp, int96 k, unsigned int k_offset)
+/* calculates f = 2 * (k+k_offset) * exp + 1 */
+{
+  int96 exp96;
 
+  exp96.d1 = exp >> 31;
+  exp96.d0 = exp << 1;			// exp96 = 2 * exp
+
+ 
+  unsigned long long t = (unsigned long long)k_offset * NUM_CLASSES + k.d0;
+  k.d0 = (unsigned int)t;
+  k.d1 = (unsigned int)(t >> 32) + k.d1;
+
+  t = (unsigned long long)k.d0 * exp96.d0;
+  unsigned int high = (unsigned int)(t >> 32);
+  f->d0 = 1 + (unsigned int)t;
+  
+  t = (unsigned long long)k.d1 * exp96.d0 + high;
+  high = (unsigned int)(t >> 32);
+  f->d1 = (unsigned int)t;
+  f->d2 = high;
+
+  unsigned int sum = f->d1 + (exp96.d1 ? k.d0 : 0);
+  int carry = sum < f->d1 ? 1 : 0;
+  f->d1 = sum;
+  f->d2 += (exp96.d1 ? k.d1 : 0) + carry;
+}
+#endif
 
 __device__ static void create_FC96_mad(int96 *f, unsigned int exp, int96 k, unsigned int k_offset)
 /* similar to create_FC96(), this versions uses multiply-add with carry which
 is faster for _SOME_ kernels. */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ < FERMI) || (CUDART_VERSION < 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   create_FC96(f, exp, k, k_offset);
 #else
@@ -117,6 +146,31 @@ is faster for _SOME_ kernels. */
     f->d1 = __add_cc(f->d1, k.d0);
     f->d2 = __addc  (f->d2, k.d1);  
   }							// f = 2 * k * exp + 1
+#endif
+#else
+  int96 exp96;
+
+  exp96.d1 = exp >> 31;
+  exp96.d0 = exp << 1;			// exp96 = 2 * exp
+
+ 
+  unsigned long long t = (unsigned long long)k_offset * NUM_CLASSES + k.d0;
+  k.d0 = (unsigned int)t;
+  k.d1 = (unsigned int)(t >> 32) + k.d1;
+
+  t = (unsigned long long)k.d0 * exp96.d0;
+  unsigned int high = (unsigned int)(t >> 32);
+  f->d0 = 1 + (unsigned int)t;
+  
+  t = (unsigned long long)k.d1 * exp96.d0 + high;
+  high = (unsigned int)(t >> 32);
+  f->d1 = (unsigned int)t;
+  f->d2 = high;
+
+  unsigned int sum = f->d1 + (exp96.d1 ? k.d0 : 0);
+  int carry = sum < f->d1 ? 1 : 0;
+  f->d1 = sum;
+  f->d2 += (exp96.d1 ? k.d1 : 0) + carry;
 #endif
 }
 
@@ -175,6 +229,7 @@ are "out of range".
   }
 #endif
 
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   nn.d0 =                          __umul32(n.d0, qi);
   nn.d1 = __umad32hi_cc (n.d0, qi, __umul32(n.d1, qi));
@@ -188,6 +243,25 @@ are "out of range".
   res->d0 = __sub_cc (q.d0, nn.d0);
   res->d1 = __subc_cc(q.d1, nn.d1);
   res->d2 = __subc   (q.d2, nn.d2);
+#else
+  unsigned long long t = (unsigned long long)n.d0 * qi;
+  unsigned int high = (unsigned int)(t >> 32);
+  nn.d0 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+  nn.d2 = n.d2 * qi + high;
+
+  unsigned int diff = q.d0 - nn.d0;
+  int borrow = diff > q.d0 ? 1 : 0;
+  res->d0 = diff;
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  res->d1 = diff;
+  res->d2 = q.d2 - nn.d2 - borrow;
+
+#endif
 
 // perfect refinement not needed, barrett's modular reduction can handle numbers which are a little bit "too big".
 /*  if(cmp_ge_96(*res,n))
@@ -233,12 +307,23 @@ so we compare the LSB of qi and q.d0, if they are the same (both even or both od
   if((q.d0 - nn.d0) == 1) /* is the lowest word of the result 1 (only in this case n might be a factor) */
 #endif
   {
+
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
     nn.d1 = __umad32hi_cc (n.d0, qi, __umul32(n.d1, qi));
     nn.d2 = __umad32hic   (n.d1, qi, __umul32(n.d2, qi));
 #else
     nn.d1 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
     nn.d2 = __addc   (__umul32hi(n.d1, qi), __umul32(n.d2, qi));
+#endif
+#else
+    unsigned long long t = (unsigned long long)n.d0 * qi;
+    unsigned int high = (unsigned int)(t >> 32);
+
+    t = (unsigned long long)n.d1 * qi + high; 
+    nn.d1 = (unsigned int)t;
+    high = (unsigned int)(t >> 32);
+    nn.d2 = n.d2 * qi + high;
 #endif
 
 #ifdef WAGSTAFF
@@ -248,11 +333,24 @@ so we compare the LSB of qi and q.d0, if they are the same (both even or both od
     
     if(res == 0xFFFFFFFF)
 #else /* Mersennes */
+#ifdef __HIP_PLATFORM_NVIDIA__
     nn.d0++;
     res  = __sub_cc (q.d0, nn.d0);
 //           __sub_cc (q.d0, nn.d0); /* the compiler (release 5.0, V0.2.1221) doesn't want to execute this so we need the TWO lines above... */
     res |= __subc_cc(q.d1, nn.d1);
     res |= __subc   (q.d2, nn.d2);
+#else
+    nn.d0++;
+    unsigned int diff = q.d0 - nn.d0;
+    int borrow = diff > q.d0 ? 1 : 0;
+    res = diff;
+
+    diff = q.d1 - nn.d1 - borrow;
+    borrow = diff > q.d1 ? 1 : 0;
+    res |= diff;
+    diff = q.d2 - nn.d2 - borrow;
+    res |= diff;
+#endif
 
     if(res == 0)
 #endif

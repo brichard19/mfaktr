@@ -114,7 +114,7 @@ __device__ static void create_k_deltas(unsigned int *bit_array, unsigned int bit
 __device__ static void create_fbase96(int96 *f_base, int96 k_base, unsigned int exp, unsigned int bits_to_process)
 {
 // Compute factor corresponding to first sieve bit in this block.
-
+#ifdef __HIP_PLATFORM_NVIDIA__
 // Compute base k value
   k_base.d0 = __add_cc (k_base.d0, __umul32  (blockIdx.x * bits_to_process, NUM_CLASSES));
   k_base.d1 = __addc   (k_base.d1, __umul32hi(blockIdx.x * bits_to_process, NUM_CLASSES)); /* k values are limited to 64 bits */
@@ -123,6 +123,21 @@ __device__ static void create_fbase96(int96 *f_base, int96 k_base, unsigned int 
   f_base->d0 =                                      __umul32(k_base.d0, exp);
   f_base->d1 = __add_cc(__umul32hi(k_base.d0, exp), __umul32(k_base.d1, exp));
   f_base->d2 = __addc  (__umul32hi(k_base.d1, exp),                       0);
+#else
+  unsigned long long k64 = (unsigned long long)blockIdx.x * bits_to_process * NUM_CLASSES + k_base.d0;
+  k_base.d0 = (unsigned int)k64;
+  k_base.d1 = (unsigned int)(k64 >> 32) + k_base.d1;
+
+  unsigned long long t = (unsigned long long)k_base.d0 * exp;
+  unsigned int high = (unsigned int)(t >> 32);
+  f_base->d0 = (unsigned int)t;
+
+  t = (unsigned long long)k_base.d1 * exp + high;
+  high = (unsigned int)(t >> 32);
+  f_base->d1 = (unsigned int)t;
+
+  f_base->d2 = high;
+#endif
 
 // Compute f_base = 2 * k * exp + 1
   shl_96(f_base);

@@ -47,8 +47,12 @@ __device__ static void mod_192_96(int96 *res, int192 q, int96 n, float nf, unsig
   float qf;
   unsigned int qi;
   int192 nn;
+  unsigned long long t;
+  unsigned int high;
+  int borrow;
+  unsigned int diff;
 
-/********** Step 1, Offset 2^75 (2*32 + 11) **********/
+  /********** Step 1, Offset 2^75 (2*32 + 11) **********/
 /*
 the 75 bit kernel has only one difference: the first iteration of the
 division will be skipped
@@ -65,10 +69,26 @@ division will be skipped
 
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d2 =                                 __umul32(n.d0, qi);
   nn.d3 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d4 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
   nn.d5 = __addc   (__umul32hi(n.d2, qi),                  0);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  high = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d2 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d4 = (unsigned int)t;
+  
+  nn.d5 = high;
+#endif
 
 // shiftleft nn 11 bits
   nn.d5 = (nn.d5 << 11) + (nn.d4 >> 21);
@@ -77,10 +97,28 @@ division will be skipped
   nn.d2 =  nn.d2 << 11;
 
 //  q = q - nn
+#ifdef __HIP_PLATFORM_NVIDIA__
   q.d2 = __sub_cc (q.d2, nn.d2);
   q.d3 = __subc_cc(q.d3, nn.d3);
   q.d4 = __subc_cc(q.d4, nn.d4);
   q.d5 = __subc   (q.d5, nn.d5);
+#else
+  diff = q.d2 - nn.d2;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff;
+  
+  diff = q.d5 - nn.d5 - borrow;
+  q.d5 = diff;
+#endif
+
 #endif // SHORTCUT_75BIT
 /********** Step 2, Offset 2^55 (1*32 + 23) **********/
 #ifndef SHORTCUT_75BIT  
@@ -99,10 +137,25 @@ division will be skipped
 
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d1 =                                 __umul32(n.d0, qi);
   nn.d2 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d3 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
   nn.d4 = __addc   (__umul32hi(n.d2, qi),                  0);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  high = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d2 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t;
+  nn.d4 = high;
+#endif
 
 // shiftleft nn 23 bits
 #ifdef DEBUG_GPU_MATH
@@ -114,6 +167,7 @@ division will be skipped
   nn.d1 =  nn.d1 << 23;
 
 // q = q - nn
+#ifdef __HIP_PLATFORM_NVIDIA__
   q.d1 = __sub_cc (q.d1, nn.d1);
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc_cc(q.d3, nn.d3);
@@ -122,6 +176,26 @@ division will be skipped
 #else
   q.d4 = __subc_cc(q.d4, nn.d4);
   q.d5 = __subc   (q.d5, nn.d5);
+#endif
+#else
+  diff = q.d1 - nn.d1;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff;
+  
+  diff = q.d5 - nn.d5 - borrow;
+  q.d5 = diff;
 #endif
 
 /********** Step 3, Offset 2^35 (1*32 + 3) **********/
@@ -141,6 +215,7 @@ division will be skipped
   qi <<= 3;
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d1 =                                 __umul32(n.d0, qi);
   nn.d2 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d3 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
@@ -151,6 +226,35 @@ division will be skipped
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc_cc(q.d3, nn.d3);
   q.d4 = __subc   (q.d4, nn.d4);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  high = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d2 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t;
+  nn.d4 = high;
+
+  diff = q.d1 - nn.d1;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
+#endif
 
 /********** Step 4, Offset 2^15 (0*32 + 15) **********/
   MODBASECASE_NONZERO_ERROR(q.d5, 4, 5, 4);
@@ -166,11 +270,26 @@ division will be skipped
   MODBASECASE_QI_ERROR(1<<22, 4, qi, 5);
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d0 =                                 __umul32(n.d0, qi);
   nn.d1 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d2 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
   nn.d3 = __addc   (__umul32hi(n.d2, qi),                  0);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  high = (unsigned int)(t >> 32);
+  nn.d0 = (unsigned int)t;
 
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+ 
+  t = (unsigned long long)n.d2 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  nn.d3 = high; 
+#endif 
+  
 // shiftleft nn 15 bits
 #ifdef DEBUG_GPU_MATH
   nn.d4 =                  nn.d3 >> 17;
@@ -181,6 +300,7 @@ division will be skipped
   nn.d0 =  nn.d0 << 15;
 
 //  q = q - nn
+#ifdef __HIP_PLATFORM_NVIDIA__
   q.d0 = __sub_cc (q.d0, nn.d0);
   q.d1 = __subc_cc(q.d1, nn.d1);
   q.d2 = __subc_cc(q.d2, nn.d2);
@@ -189,6 +309,26 @@ division will be skipped
 #else
   q.d3 = __subc_cc(q.d3, nn.d3);
   q.d4 = __subc   (q.d4, nn.d4);
+#endif
+#else 
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff;
+
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
 #endif
 
 /********** Step 5, Offset 2^0 (0*32 + 0) **********/
@@ -205,6 +345,7 @@ division will be skipped
   MODBASECASE_QI_ERROR(1<<20, 5, qi, 8);
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d0 =                                 __umul32(n.d0, qi);
   nn.d1 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
 #ifndef DEBUG_GPU_MATH  
@@ -222,6 +363,35 @@ division will be skipped
 #else
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc   (q.d3, nn.d3);
+#endif
+#else
+  t = (unsigned long long)n.d0 * qi;
+  high = (unsigned int)(t >> 32);
+  nn.d0 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+
+  t = (unsigned long long)n.d2 * qi + high;
+  high = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  nn.d3 = high;
+
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff;
+
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  q.d3 = diff;
 #endif
 
   res->d0=q.d0;
@@ -361,9 +531,19 @@ a is precomputed on host ONCE. */
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int high = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    t = (unsigned long long)f_base.d1 + high;
+    high = (unsigned int)(t >> 32);
+    f.d1 = (unsigned int)t;
+    f.d2 = f_base.d2 + high;
+#endif
 
     test_FC96_mfaktc_95(f, b, exp, RES, shiftcount
 #ifdef DEBUG_GPU_MATH

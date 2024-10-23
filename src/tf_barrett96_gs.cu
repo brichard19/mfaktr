@@ -81,9 +81,20 @@ bit_max64 is the number of bits in the factor (minus 64)
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
 
     test_FC96_barrett92(f, b_preinit, initial_shifter_value, RES, bit_max64
 #ifdef DEBUG_GPU_MATH
@@ -124,10 +135,20 @@ bit_max64 is the number of bits in the factor (minus 64)
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
-
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
     test_FC96_barrett88(f, b_preinit, initial_shifter_value, RES, bit_max64
 #ifdef DEBUG_GPU_MATH
                         , modbasecase_debug
@@ -167,10 +188,20 @@ bit_max64 is the number of bits in the factor (minus 64)
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
-
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
     test_FC96_barrett87(f, b_preinit, initial_shifter_value, RES, bit_max64
 #ifdef DEBUG_GPU_MATH
                         , modbasecase_debug
@@ -209,10 +240,20 @@ a is precomputed on host ONCE.
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
-
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
     test_FC96_barrett79(f, b_preinit, initial_shifter_value, RES
 #ifdef DEBUG_GPU_MATH
                         , bit_max64, modbasecase_debug
@@ -251,10 +292,20 @@ a is precomputed on host ONCE.
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
-
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
     test_FC96_barrett77(f, b_preinit, initial_shifter_value, RES
 #ifdef DEBUG_GPU_MATH
                         , bit_max64, modbasecase_debug
@@ -293,10 +344,20 @@ a is precomputed on host ONCE.
     k_delta = k_deltas[i];
 
 // Compute new f.  This is computed as f = f_base + 2 * (k - k_base) * exp.
+#ifdef __HIP_PLATFORM_NVIDIA__
     f.d0 = __add_cc (f_base.d0, __umul32(2 * k_delta * NUM_CLASSES, exp));
     f.d1 = __addc_cc(f_base.d1, __umul32hi(2 * k_delta * NUM_CLASSES, exp));
     f.d2 = __addc   (f_base.d2, 0);
-
+#else
+    unsigned long long t = (unsigned long long)2 * k_delta * NUM_CLASSES * exp + f_base.d0;
+    unsigned int h = (unsigned int)(t >> 32);
+    f.d0 = (unsigned int)t;
+    
+    unsigned int sum = f_base.d1 + h;
+    int carry = sum < f_base.d1 ? 1 : 0;
+    f.d1 = sum;
+    f.d2 = f_base.d2 + carry;
+#endif
     test_FC96_barrett76(f, b_preinit, initial_shifter_value, RES
 #ifdef DEBUG_GPU_MATH
                         , bit_max64, modbasecase_debug

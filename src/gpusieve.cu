@@ -125,6 +125,7 @@ inline void __checkCudaErrors(hipError_t err, const char *file, const int line )
 
 __device__ __inline static int mod_p (int x, int p, int pinv)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 //	int	q, r, a, b;
 
 //	q = __mulhi (x, pinv);		// quotient = x * inverse_of_p
@@ -142,6 +143,14 @@ __device__ __inline static int mod_p (int x, int p, int pinv)
 	     "sub.s32 	%0, %1, %3;\n\t"		//	r = x - p;
 	     "slct.s32.s32 %0, %0, %1, %0;"		//	r = (r >= 0) ? r : x
 	     : "=r" (r), "+r" (x) : "r" (pinv), "r" (p));
+#else
+	int r;
+	r = __mulhi (x, pinv);
+	r = r * p;
+	x = x - r;
+	r = x - p;
+	r = (r >= 0) ? r : x;
+#endif
 
 #ifdef GWDEBUG
 	if (pinv != gen_pinv (p))
@@ -190,8 +199,11 @@ __device__ __inline static int bump_mod_p (int i, int inc, int p)
 {
 	int	x, j;
 	i = i + inc % p; j = i + p;
+#ifdef __HIP_PLATFORM_NVIDIA__
 	asm("slct.s32.s32 %0, %1, %2, %1;" : "=r" (x) : "r" (i), "r" (j));
-
+#else
+	x = (i >= 0) ? i : j;
+#endif
 #ifdef GWDEBUG
 	if (x < 0 || x >= p)
 		printf ("x bump mod p out of range!! x = %d, i = %d, p = %d\n", x, i, p);

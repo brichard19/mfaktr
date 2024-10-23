@@ -33,15 +33,22 @@ __device__ static int cmp_ge_96(int96 a, int96 b)
 __device__ static void shl_96(int96 *a)
 /* shiftleft a one bit */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   a->d0 = __add_cc (a->d0, a->d0);
   a->d1 = __addc_cc(a->d1, a->d1);
   a->d2 = __addc   (a->d2, a->d2);
+#else
+  a->d2 = (a->d2 << 1) | (a->d1 >> 31);
+  a->d1 = (a->d1 << 1) | (a->d0 >> 31);
+  a->d0 <<= 1;
+#endif
 }
 
 
 __device__ static void shl_192(int192 *a)
 /* shiftleft a one bit */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   a->d0 = __add_cc (a->d0, a->d0);
   a->d1 = __addc_cc(a->d1, a->d1);
   a->d2 = __addc_cc(a->d2, a->d2);
@@ -50,6 +57,14 @@ __device__ static void shl_192(int192 *a)
 #ifndef SHORTCUT_75BIT  
   a->d5 = __addc   (a->d5, a->d5);
 #endif
+#else
+  a->d5 = (a->d5 << 1) | (a->d4 >> 31);
+  a->d4 = (a->d4 << 1) | (a->d3 >> 31);
+  a->d3 = (a->d3 << 1) | (a->d2 >> 31);
+  a->d2 = (a->d2 << 1) | (a->d1 >> 31);
+  a->d1 = (a->d1 << 1) | (a->d0 >> 31);
+  a->d0 <<= 1;
+#endif
 }
 
 
@@ -57,15 +72,31 @@ __device__ static void sub_96(int96 *res, int96 a, int96 b)
 /* a must be greater or equal b!
 res = a - b */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   res->d0 = __sub_cc (a.d0, b.d0);
   res->d1 = __subc_cc(a.d1, b.d1);
   res->d2 = __subc   (a.d2, b.d2);
+#else
+  int borrow = 0;
+
+  unsigned int diff = a.d0 - b.d0;
+  res->d0 = diff;
+  borrow = diff > a.d0 ? 1 : 0;
+  
+  diff = a.d1 - b.d1 - borrow;
+  res->d1 = diff;
+  borrow = diff > a.d1 ? 1 : 0;
+  
+  diff = a.d2 - b.d2 - borrow;
+  res->d2 = diff;
+#endif
 }
 
 
 __device__ static void mul_96(int96 *res, int96 a, int96 b)
 /* res = a * b (only lower 96 bits of the result) */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       "mul.lo.u32    %0, %3, %6;\n\t"       /* (a.d0 * b.d0).lo */
@@ -97,6 +128,25 @@ __device__ static void mul_96(int96 *res, int96 a, int96 b)
   res->d2+= __umul32  (a.d0, b.d2);
 
   res->d2+= __umul32  (a.d1, b.d1);
+#endif
+#else
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int y[3] = {b.d0, b.d1, b.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * y[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d0 = z[0];
+  res->d1 = z[1];
+  res->d2 = z[2];
 #endif
 }
 
@@ -142,6 +192,7 @@ res.d0 and res.d1 the result of mul_96_192_no_low() is 0 to 2 lower than
 of mul_96_192().
  */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       "mul.lo.u32      %0, %6, %7;\n\t"       /* (a.d2 * b.d0).lo */
@@ -191,6 +242,26 @@ of mul_96_192().
   res->d4 = __addc_cc(res->d4, __umul32hi(a.d2, b.d1));
   res->d5 = __addc   (res->d5,                      0);
 #endif
+#else
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int y[3] = {b.d0, b.d1, b.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * y[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d2 = z[2];
+  res->d3 = z[3];
+  res->d4 = z[4];
+  res->d5 = z[5];
+#endif
 }
 
 
@@ -204,6 +275,7 @@ res.d0, res.d1 and res.d2 the result of mul_96_192_no_low() is 0 to 4 lower
 than of mul_96_192().
  */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       "mul.hi.u32      %0, %5, %6;\n\t"       /* (a.d2 * b.d0).hi */
@@ -241,6 +313,25 @@ than of mul_96_192().
   res->d4 = __addc_cc(res->d4, __umul32hi(a.d2, b.d1));
   res->d5 = __addc   (res->d5,                      0);
 #endif
+#else
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int y[3] = {b.d0, b.d1, b.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * y[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d3 = z[3];
+  res->d4 = z[4];
+  res->d5 = z[5];
+#endif
 }
 
 
@@ -256,6 +347,7 @@ res.d0, res.d1 and res.d2 the result of mul_96_192_no_low() is 0 to 3 lower
 than of mul_96_192().
 */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       ".reg .u32 d2;\n\t"
@@ -301,6 +393,26 @@ than of mul_96_192().
   res->d4 = __addc_cc(res->d4, __umul32hi(a.d2, b.d1));
   res->d5 = __addc   (res->d5,                      0);
 #endif
+#else
+
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int y[3] = {b.d0, b.d1, b.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * y[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d3 = z[3];
+  res->d4 = z[4];
+  res->d5 = z[5];
+#endif
 }
 
 
@@ -308,6 +420,7 @@ __device__ static void square_96_192(int192 *res, int96 a)
 /* res = a^2
 assuming that a is < 2^95 (a.d2 < 2^31)! */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       ".reg .u32 a2;\n\t"
@@ -381,6 +494,27 @@ We'll use this knowledge later to avoid some two carry steps to %5 */
       : "=r" (res->d0), "=r" (res->d1), "=r" (res->d2), "=r" (res->d3), "=r" (res->d4), "=r" (res->d5)
       : "r" (a.d0), "r" (a.d1), "r" (a.d2));
 #endif
+#else
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * x[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d0 = z[0];
+  res->d1 = z[1];
+  res->d2 = z[2];
+  res->d3 = z[3];
+  res->d4 = z[4];
+  res->d5 = z[5];
+#endif
 }
 
 
@@ -390,6 +524,7 @@ this is a stripped down version of square_96_192, it doesn't compute res.d5
 and is a little bit faster.
 For correct results a must be less than 2^80 (a.d2 less than 2^16) */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if (__CUDA_ARCH__ >= FERMI) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   asm("{\n\t"
       ".reg .u32 a2;\n\t"
@@ -449,5 +584,25 @@ For correct results a must be less than 2^80 (a.d2 less than 2^16) */
       "}"
       : "=r"(res->d0), "=r"(res->d1), "=r"(res->d2), "=r"(res->d3), "=r"(res->d4)
       : "r"(a.d0), "r"(a.d1), "r"(a.d2));
-#endif 
+#endif
+#else
+  unsigned int x[3] = {a.d0, a.d1, a.d2};
+  unsigned int z[6] = {0};
+
+  for(int i = 0; i < 3; i++) {
+    unsigned int high = 0;
+    for(int j = 0; j < 3; j++) {
+      unsigned long long prod = (unsigned long long)x[i] * x[j] + z[i + j] + high;
+      z[i + j] = (unsigned int)prod;
+      high = (unsigned int)(prod >> 32);
+    }
+    z[i + 3] = high;
+  }
+
+  res->d0 = z[0];
+  res->d1 = z[1];
+  res->d2 = z[2];
+  res->d3 = z[3];
+  res->d4 = z[4];
+#endif
 }

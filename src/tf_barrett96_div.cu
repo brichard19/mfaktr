@@ -88,7 +88,17 @@ Input assumptions:
   
   res->d2 = qi;
 
+  unsigned long long t;
+  unsigned int h;
+  int c;
+  int b;
+  unsigned int sum;
+  unsigned int diff;
+  int carry;
+  int borrow;
+
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d2 =                                 __umul32(n.d0, qi);
 #if (__CUDA_ARCH__ >= KEPLER) && (CUDART_VERSION >= 4010) /* multiply-add with carry is not available on CC 1.x devices and before CUDA 4.1 */
   nn.d3 = __umad32hi_cc       (n.d0, qi,  __umul32(n.d1, qi));
@@ -117,6 +127,40 @@ Input assumptions:
 #else
   q.d4 = __subc   (q.d4, nn.d4);
 #endif
+#else
+  t = (unsigned long long)n.d0 * qi;
+  h = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  t = (unsigned long long)n.d1 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t; 
+  #ifndef INV_160_96
+  t = (unsigned long long)n.d2 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d4 = (unsigned int)t;
+  nn.d5 = h;
+  #else
+  t = (unsigned long long)n.d2 * qi + h;
+  nn.d4 = (unsigned int)t;
+  #endif
+
+//  q = q - nn
+  diff = q.d2 - nn.d2;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+#ifndef INV_160_96
+  diff = q.d4 - nn.d4 - borrow;
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff;
+  q.d5 = q.d5 - nn.d5 - borrow;
+#else
+  //q.d4 = __subc   (q.d4, nn.d4);
+  q.d4 = q.d4 - nn.d4 - borrow;
+#endif
+#endif
 
 /********** Step 2, Offset 2^55 (1*32 + 23) **********/
 #ifndef INV_160_96
@@ -132,23 +176,43 @@ Input assumptions:
 
   MODBASECASE_QI_ERROR(1<<22, 2, qi, 1);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if __CUDA_ARCH__ >= KEPLER
   res->d1 =  __umul32(qi, 8388608);
+#else
+  res->d1 =  qi << 23;
+#endif
 #else
   res->d1 =  qi << 23;
 #endif
   res->d2 += qi >>  9;
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d1 =                                 __umul32(n.d0, qi);
   nn.d2 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d3 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
   nn.d4 = __addc   (__umul32hi(n.d2, qi),                  0);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  h = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+
+  t = (unsigned long long)n.d2 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t;
+  nn.d4 = h;
+#endif
 
 // shiftleft nn 23 bits
 #ifdef DEBUG_GPU_MATH
   nn.d5 =                  nn.d4 >> 9;
-#endif  
+#endif
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if __CUDA_ARCH__ >= KEPLER
   nn.d4 = __umad32(nn.d4, 8388608, (nn.d3 >> 9));
   nn.d3 = __umad32(nn.d3, 8388608, (nn.d2 >> 9));
@@ -160,8 +224,15 @@ Input assumptions:
   nn.d2 = (nn.d2 << 23) + (nn.d1 >> 9);
   nn.d1 =  nn.d1 << 23;
 #endif
+#else
+  nn.d4 = (nn.d4 << 23) + (nn.d3 >> 9);
+  nn.d3 = (nn.d3 << 23) + (nn.d2 >> 9);
+  nn.d2 = (nn.d2 << 23) + (nn.d1 >> 9);
+  nn.d1 =  nn.d1 << 23;
+#endif
 
 // q = q - nn
+#ifdef __HIP_PLATFORM_NVIDIA__
   q.d1 = __sub_cc (q.d1, nn.d1);
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc_cc(q.d3, nn.d3);
@@ -170,6 +241,26 @@ Input assumptions:
 #else
   q.d4 = __subc_cc(q.d4, nn.d4);
   q.d5 = __subc   (q.d5, nn.d5);
+#endif
+#else
+  diff = q.d1 - nn.d1;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff;
+  
+  diff = q.d5 - nn.d5 - borrow;
+  q.d5 = diff;
 #endif
 
 /********** Step 3, Offset 2^35 (1*32 + 3) **********/
@@ -184,21 +275,33 @@ Input assumptions:
 
   MODBASECASE_QI_ERROR(1<<22, 3, qi, 3);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if __CUDA_ARCH__ >= KEPLER
   res->d1 = __add_cc(res->d1, __umul32(qi, 8) );
 #else
   res->d1 = __add_cc(res->d1, qi << 3 );
 #endif
   res->d2 = __addc  (res->d2, qi >> 29);
+#else
+  sum = res->d1 + (qi << 3);
+  carry = sum < res->d1 ? 1 : 0;
+  res->d1 = sum;
+  res->d2 = res->d2 + (qi >> 29) + carry;
+#endif
 
 // shiftleft qi 3 bits to avoid "long shiftleft" after multiplication
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if __CUDA_ARCH__ >= KEPLER
   qi *= 8;
 #else
   qi <<= 3;
 #endif
+#else
+  qi <<= 3;
+#endif
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d1 =                                 __umul32(n.d0, qi);
   nn.d2 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d3 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
@@ -209,6 +312,35 @@ Input assumptions:
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc_cc(q.d3, nn.d3);
   q.d4 = __subc   (q.d4, nn.d4);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  h = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+
+  t = (unsigned long long)n.d2 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d3 = (unsigned int)t;
+  nn.d4 = h;
+
+  diff = q.d1 - nn.d1;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
+#endif
 
 /********** Step 4, Offset 2^15 (0*32 + 15) **********/
   MODBASECASE_NONZERO_ERROR(q.d5, 4, 5, 4);
@@ -222,6 +354,7 @@ Input assumptions:
 
   MODBASECASE_QI_ERROR(1<<22, 4, qi, 5);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
 #if __CUDA_ARCH__ >= KEPLER
   res->d0 = __umul32(qi, 32768);
 #else
@@ -235,7 +368,30 @@ Input assumptions:
   nn.d1 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d2 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
   nn.d3 = __addc   (__umul32hi(n.d2, qi),                  0);
+#else
 
+  res->d0 = qi << 15;
+
+  sum = res->d1 + (qi >> 17);
+  carry = sum < res->d1 ? 1 : 0;
+  res->d1 = sum;
+  res->d2 = res->d2 + carry;
+   
+  t = (unsigned long long)n.d0 * qi;
+  h = (unsigned int)(t >> 32);
+  nn.d0 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d1 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d1 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d2 * qi + h;
+  h = (unsigned int)(t >> 32);
+  nn.d2 = (unsigned int)t;
+  nn.d3 = h;
+#endif
+
+#ifdef __HIP_PLATFORM_NVIDIA__
 // shiftleft nn 15 bits
 #ifdef DEBUG_GPU_MATH
   nn.d4 =                  nn.d3 >> 17;
@@ -263,6 +419,33 @@ Input assumptions:
   q.d4 = __subc   (q.d4, nn.d4);
 #endif
 
+#else
+
+  nn.d3 = (nn.d3 << 15) + (nn.d2 >> 17);
+  nn.d2 = (nn.d2 << 15) + (nn.d1 >> 17);
+  nn.d1 = (nn.d1 << 15) + (nn.d0 >> 17);
+  nn.d0 =  nn.d0 << 15;
+
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff;
+
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
+#endif
+
 /********** Step 5, Offset 2^0 (0*32 + 0) **********/
   MODBASECASE_NONZERO_ERROR(q.d5, 5, 5, 6);
   MODBASECASE_NONZERO_ERROR(q.d4, 5, 4, 7);
@@ -275,14 +458,26 @@ Input assumptions:
 
   MODBASECASE_QI_ERROR(1<<20, 5, qi, 8);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   res->d0 = __add_cc (res->d0, qi);
   res->d1 = __addc_cc(res->d1,  0);
   res->d2 = __addc   (res->d2,  0);
+#else 
+  sum = res->d0 + qi;
+  carry = sum < res->d0 ? 1 : 0;
+  res->d0 = sum;
   
+  sum = res->d1 + carry;
+  carry = sum < res->d1 ? 1 : 0;
+  res->d1 = sum;
+  res->d2 = res->d2 + carry;
+#endif
+
 #ifdef DEBUG_GPU_MATH
 /* compute to the end only in DEBUG_GPU_MATH mode */
 
 // nn = n * qi
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d0 =                                 __umul32(n.d0, qi);
   nn.d1 = __add_cc (__umul32hi(n.d0, qi), __umul32(n.d1, qi));
   nn.d2 = __addc_cc(__umul32hi(n.d1, qi), __umul32(n.d2, qi));
@@ -293,6 +488,35 @@ Input assumptions:
   q.d1 = __subc_cc(q.d1, nn.d1);
   q.d2 = __subc_cc(q.d2, nn.d2);
   q.d3 = __subc   (q.d3, nn.d3);
+#else
+  t = (unsigned long long)n.d0 * qi;
+  h = (unsigned int)(h >> 32);
+  nn.d0 = (unsigned int)t;
+
+  t = (unsigned long long)n.d1 * qi + h;
+  h = (unsigned int)(h >> 32);
+  nn.d1 = (unsigned int)t;
+  
+  t = (unsigned long long)n.d2 * qi + h;
+  h = (unsigned int)(h >> 32);
+  nn.d2 = (unsigned int)t;
+  nn.d3 = h; 
+  
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff;
+  
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  q.d3 = diff;
+#endif
 
   tmp96.d0=q.d0;
   tmp96.d1=q.d1;
@@ -314,9 +538,22 @@ one. Sometimes the result is a little bit bigger than n
 /*    res->d0 = __add_cc (res->d0,  1);
     res->d1 = __addc_cc(res->d1,  0);
     res->d2 = __addc   (res->d2,  0);*/
+#ifdef __HIP_PLATFORM_NVIDIA__
     tmp96.d0 = __sub_cc (tmp96.d0, n.d0);
     tmp96.d1 = __subc_cc(tmp96.d1, n.d1);
     tmp96.d2 = __subc   (tmp96.d2, n.d2);
+#else
+    diff = tmp96.d0 - n.d0;
+    borrow = diff > tmp96.d0 ? 1 : 0;
+    tmp96.d0 = diff;
+    
+    diff = tmp96.d1 - n.d1 - borrow;
+    borrow = diff > tmp96.d1 ? 1 : 0;
+    tmp96.d1 = diff;
+    
+    diff = tmp96.d2 - n.d2 - borrow;
+    tmp96.d2 = diff;
+#endif
   }
   if(cmp_ge_96(tmp96,n))
   {

@@ -18,29 +18,43 @@ along with mfaktc.  If not, see <http://www.gnu.org/licenses/>.
 
 __device__ static unsigned int __umul24hi(unsigned int a, unsigned int b)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   unsigned int r;
   asm("mul24.hi.u32 %0, %1, %2;" : "=r" (r) : "r" (a) , "r" (b));
   return r;
+#else 
+  unsigned long long r = ((unsigned long long)a * b);
+  return (unsigned int)(r >> 16);
+#endif
 }
 
 
 __device__ static unsigned int __umul32(unsigned int a, unsigned int b)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   unsigned int r;
   asm("mul.lo.u32 %0, %1, %2;" : "=r" (r) : "r" (a) , "r" (b));
   return r;
+#else
+  return a * b;
+#endif
 }
 
 
 __device__ static unsigned int __umul32hi(unsigned int a, unsigned int b)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
 /*  unsigned int r;
   asm("mul.hi.u32 %0, %1, %2;" : "=r" (r) : "r" (a) , "r" (b));
   return r;*/
   return __umulhi(a,b);
+#else
+  unsigned long long r = (unsigned long long)a * b;
+  return (unsigned int)(r >> 32);
+#endif
 }
 
-
+#ifdef __HIP_PLATFORM_NVIDIA__
 __device__ static unsigned int __add_cc(unsigned int a, unsigned int b)
 {
   unsigned int r;
@@ -88,15 +102,21 @@ __device__ static unsigned int __subc(unsigned int a, unsigned int b)
   return r;
 }
 
+#endif
 
 __device__ static unsigned int __umad32(unsigned int a, unsigned int b, unsigned int c)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   unsigned int r;
   asm("mad.lo.u32 %0, %1, %2, %3;" : "=r" (r) : "r" (a) , "r" (b), "r" (c));
   return r;
+#else
+  unsigned long long r = (unsigned long long)a * b + c;
+  return (unsigned int)r;
+#endif
 }
 
-
+#ifdef __HIP_PLATFORM_NVIDIA__
 __device__ static unsigned int __umad32_cc(unsigned int a, unsigned int b, unsigned int c)
 {
   unsigned int r;
@@ -119,16 +139,22 @@ __device__ static unsigned int __umad32c_cc(unsigned int a, unsigned int b, unsi
   asm("madc.lo.cc.u32 %0, %1, %2, %3;" : "=r" (r) : "r" (a) , "r" (b), "r" (c));
   return r;
 }
-
+#endif
 
 __device__ static unsigned int __umad32hi(unsigned int a, unsigned int b, unsigned int c)
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   unsigned int r;
   asm("mad.hi.u32 %0, %1, %2, %3;" : "=r" (r) : "r" (a) , "r" (b), "r" (c));
   return r;
+#else
+  unsigned long long r = (unsigned long long)a * b + c;
+
+  return (unsigned int)(r >> 32);
+#endif
 }
 
-
+#ifdef __HIP_PLATFORM_NVIDIA__
 __device__ static unsigned int __umad32hi_cc(unsigned int a, unsigned int b, unsigned int c)
 {
   unsigned int r;
@@ -151,7 +177,7 @@ __device__ static unsigned int __umad32hic_cc(unsigned int a, unsigned int b, un
   asm("madc.hi.cc.u32 %0, %1, %2, %3;" : "=r" (r) : "r" (a) , "r" (b), "r" (c));
   return r;
 }
-
+#endif
 
 __device__ static unsigned int __fshift_r(unsigned int a, unsigned int b, unsigned int c)
 {
@@ -162,7 +188,7 @@ On input
 
 0 <= c <= 32
 Return value is bits [c..(32+c)] shifted inplace to the 32bit return value. */
-#if (__CUDA_ARCH__ >= KEPLER_WITH_FUNNELSHIFT) && (CUDART_VERSION >= 5000)
+#if defined(__HIP_PLATFORM_NVIDIA__) && (__CUDA_ARCH__ >= KEPLER_WITH_FUNNELSHIFT) && (CUDART_VERSION >= 5000)
 /* needs CC >= 3.5 and CUDA 5.0
    needs CC >= 3.2 and CUDA 6.0
    there is no CC 3.2 in CUDA 5.x so CC >= 3.2 and CUDA >= 5.0 works fine here */

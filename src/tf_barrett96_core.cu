@@ -41,7 +41,8 @@ __device__ static void test_FC96_barrett92(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
-
+  unsigned int diff;
+  int borrow;
 /*
 ff = f as float, needed in mod_192_96().
 Precalculated here since it is the same for all steps in the following loop */
@@ -70,9 +71,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   tmp96.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   tmp96.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   tmp96.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  tmp96.d0 = diff;
+  
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  tmp96.d1 = diff;
+  
+  diff = b.d2 - tmp96.d2 - borrow;
+  tmp96.d2 = diff;
+#endif
 
 #ifdef CPU_SIEVE
   shifter<<= 32 - shiftcount;
@@ -110,13 +124,26 @@ Precalculated here since it is the same for all steps in the following loop */
 							// A grand total of up to 6 carries lost.
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
-
+#ifdef __HIP_PLATFORM_NVIDIA__
     tmp96.d0 = __sub_cc (b.d0, tmp96.d0);		// Compute the remainder
     tmp96.d1 = __subc_cc(b.d1, tmp96.d1);		// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     tmp96.d2 = __subc   (b.d2, tmp96.d2);
 							// Since the quotient was up to 6 too small, the remainder has a maximum value of 7*f,
 							// or 92 bits + log2 (7) bits, which is 94.807 bits.  In theory, this kernel can handle
 							// f values up to 2^92.193.
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    tmp96.d0 = diff;
+    
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    tmp96.d1 = diff;
+    
+    diff = b.d2 - tmp96.d2 - borrow;
+    tmp96.d2 = diff;
+#endif
+
 
     if(shifter&0x80000000)shl_96(&tmp96);			// Optional multiply by 2.  At this point tmp96 can be 95.807 bits.
 
@@ -151,7 +178,9 @@ __device__ static void test_FC96_barrett88(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
-  
+  unsigned int diff;
+  int borrow;
+
 /*
 ff = f as float, needed in mod_192_96().
 Precalculated here since it is the same for all steps in the following loop */
@@ -180,9 +209,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  a.d0 = diff;
+  
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  a.d1 = diff;
+  
+  diff = b.d2 - tmp96.d2 - borrow;
+  a.d2 = diff;
+#endif
 
 #ifdef CPU_SIEVE
   shifter<<= 32 - shiftcount;
@@ -214,14 +256,25 @@ Precalculated here since it is the same for all steps in the following loop */
 							// A grand total of up to 6 carries lost.
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
-
+#ifdef __HIP_PLATFORM_NVIDIA__
     a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
     a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     a.d2 = __subc   (b.d2, tmp96.d2);
 							// Since the quotient was up to 6 too small, the remainder has a maximum value of 7*f,
 							// or 88 bits + log2 (7) bits, which is 90.807 bits.  In theory, this kernel can handle
 							// f values up to 2^88.193.
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    a.d0 = diff;
 
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    a.d1 = diff;
+
+    diff = b.d2 - tmp96.d2 - borrow;
+    a.d2 = diff;
+#endif
 //    shifter<<=1;
     shifter += shifter;
   }
@@ -253,6 +306,8 @@ __device__ static void test_FC96_barrett87(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
+  unsigned int diff;
+  int borrow;
 
 /*
 ff = f as float, needed in mod_192_96().
@@ -282,10 +337,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  a.d0 = diff;
 
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  a.d1 = diff;
+
+  diff = b.d2 - tmp96.d2 - borrow;
+  a.d2 = diff;
+#endif
 #ifdef CPU_SIEVE
   shifter<<= 32 - shiftcount;
 #endif
@@ -315,14 +382,25 @@ Precalculated here since it is the same for all steps in the following loop */
 							// A grand total of up to 6 carries lost.
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
-
+#ifdef __HIP_PLATFORM_NVIDIA__
     a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
     a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     a.d2 = __subc   (b.d2, tmp96.d2);
 							// Since the quotient was up to 6 too small, the remainder has a maximum value of 7*f,
 							// or 87 bits + log2 (7) bits, which is 89.807 bits.  In theory, this kernel can handle
 							// f values up to 2^87.193.
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    a.d0 = diff;
 
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    a.d1 = diff;
+
+    diff = b.d2 - tmp96.d2 - borrow;
+    a.d2 = diff;
+#endif
     if(shifter&0x80000000)shl_96(&a);			// "optional multiply by 2" as in Prime95 documentation
 							// At this point a can be 90.807 bits.
 
@@ -357,7 +435,8 @@ __device__ static void test_FC96_barrett79(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
-  
+  unsigned int diff;
+  int borrow;
 /*
 ff = f as float, needed in mod_160_96().
 Precalculated here since it is the same for all steps in the following loop */
@@ -383,9 +462,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   tmp96.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   tmp96.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   tmp96.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  tmp96.d0 = diff;
+
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  tmp96.d1 = diff;
+
+  diff = b.d2 - tmp96.d2 - borrow;
+  tmp96.d2 = diff;
+#endif
 
 #ifdef CPU_SIEVE
   shifter<<= 32 - shiftcount;
@@ -426,10 +518,22 @@ Precalculated here since it is the same for all steps in the following loop */
 							// only generate 1 carry into tmp192.d3 -- for a total of up to 5 carries lost.
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
-
+#ifdef __HIP_PLATFORM_NVIDIA__
     tmp96.d0 = __sub_cc (b.d0, tmp96.d0);		// Compute the remainder
     tmp96.d1 = __subc_cc(b.d1, tmp96.d1);		// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     tmp96.d2 = __subc   (b.d2, tmp96.d2);
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    tmp96.d0 = diff;
+
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    tmp96.d1 = diff;
+
+    diff = b.d2 - tmp96.d2 - borrow;
+    tmp96.d2 = diff;
+#endif
 							// Since the quotient was up to 5 too small, the remainder has a maximum value of 6*f,
 							// or 79 bits + log2 (6) bits, which is 81.585 bits.  In theory, this kernel can handle
 							// f values up to 2^79.415.
@@ -466,7 +570,8 @@ __device__ static void test_FC96_barrett77(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
-  
+  unsigned int diff;
+  int borrow;
 /*
 ff = f as float, needed in mod_160_96().
 Precalculated here since it is the same for all steps in the following loop */
@@ -492,9 +597,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  a.d0 = diff;
+
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  a.d1 = diff;
+
+  diff = b.d2 - tmp96.d2 - borrow;
+  a.d2 = diff;
+#endif
 
 #ifdef DEBUG_GPU_MATH
   if(f.d2)						// check only when f is >= 2^64 (f <= 2^64 is not supported by this kernel
@@ -539,9 +657,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
     a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
     a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    a.d0 = diff;
+
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    a.d1 = diff;
+
+    diff = b.d2 - tmp96.d2 - borrow;
+    a.d2 = diff;
+#endif
 							// Since the quotient was up to 4 too small, the remainder has a maximum value of 5*f,
 							// or 77 bits + log2 (5) bits, which is 79.322 bits.  In theory, this kernel can handle
 							// f values up to 2^77.178.
@@ -584,7 +715,8 @@ __device__ static void test_FC96_barrett76(int96 f, int192 b, unsigned int shift
   int192 tmp192;
   int96 tmp96;
   float ff;
-
+  unsigned int diff;
+  int borrow;
 /*
 ff = f as float, needed in mod_160_96().
 Precalculated here since it is the same for all steps in the following loop */
@@ -610,9 +742,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
   mul_96(&tmp96, a, f);					// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
   a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
   a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+  diff = b.d0 - tmp96.d0;
+  borrow = diff > b.d0 ? 1 : 0;
+  a.d0 = diff;
+
+  diff = b.d1 - tmp96.d1 - borrow;
+  borrow = diff > b.d1 ? 1 : 0;
+  a.d1 = diff;
+
+  diff = b.d2 - tmp96.d2 - borrow;
+  a.d2 = diff;
+#endif
 
 #ifdef DEBUG_GPU_MATH
   if(f.d2)						// check only when f is >= 2^64 (f <= 2^64 is not supported by this kernel
@@ -654,9 +799,22 @@ Precalculated here since it is the same for all steps in the following loop */
 
     mul_96(&tmp96, a, f);				// tmp96 = quotient * f, we only compute the low 96-bits here
 
+#ifdef __HIP_PLATFORM_NVIDIA__
     a.d0 = __sub_cc (b.d0, tmp96.d0);			// Compute the remainder
     a.d1 = __subc_cc(b.d1, tmp96.d1);			// we do not need the upper digits of b and tmp96 because the result is 0 after subtraction!
     a.d2 = __subc   (b.d2, tmp96.d2);
+#else
+    diff = b.d0 - tmp96.d0;
+    borrow = diff > b.d0 ? 1 : 0;
+    a.d0 = diff;
+
+    diff = b.d1 - tmp96.d1 - borrow;
+    borrow = diff > b.d1 ? 1 : 0;
+    a.d1 = diff;
+
+    diff = b.d2 - tmp96.d2 - borrow;
+    a.d2 = diff;
+#endif
 							// Since the quotient was up to 5 too small, the remainder has a maximum value of 6*f,
 							// or 76 bits + log2 (6) bits, which is 78.585 bits.  In theory, this kernel can handle
 							// f values up to 2^76.415.

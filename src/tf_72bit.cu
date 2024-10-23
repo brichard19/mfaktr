@@ -57,9 +57,23 @@ __device__ static void sub_72(int72 *res, int72 a, int72 b)
 /* a must be greater or equal b!
 res = a - b */
 {
+#ifdef __HIP_PLATFORM_NVIDIA__
   res->d0 = __sub_cc (a.d0, b.d0) & 0xFFFFFF;
   res->d1 = __subc_cc(a.d1, b.d1) & 0xFFFFFF;
   res->d2 = __subc   (a.d2, b.d2) & 0xFFFFFF;
+#else
+  int borrow = 0;
+  unsigned int diff = (a.d0 - b.d0) & 0xFFFFFF;
+  res->d0 = diff;
+  borrow = diff > a.d0 ? 1 : 0;
+
+  diff = (a.d1 - b.d1 - borrow) & 0xFFFFFF;
+  res->d1 = diff;
+  borrow = diff > a.d1 ? 1 : 0;
+
+  diff = (a.d2 - b.d2 - borrow) & 0xFFFFFF;
+  res->d2 = diff;
+#endif
 }
 
 
@@ -180,6 +194,13 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   unsigned int qi;
   int144 nn;
 
+  unsigned int diff;
+  unsigned int sum;
+  int borrow;
+  int carry;
+  unsigned int m0;
+  unsigned int m1;
+
 /********** Step 1, Offset 2^51 (2*24 + 3) **********/
   qf= __uint2float_rn(q.d5);
   qf= qf * 16777216.0f + __uint2float_rn(q.d4);
@@ -210,11 +231,29 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   MODBASECASE_VALUE_BIG_ERROR(0xFFFFFF, "nn.d5", 1, nn.d5, 1);
 
 /*  q = q - nn */
+#ifdef __HIP_PLATFORM_NVIDIA__
 /* subtraction using sub.cc.u32, subc.cc.u32 and subc.u32 instructions */
   q.d2 = __sub_cc (q.d2, nn.d2) & 0xFFFFFF;
   q.d3 = __subc_cc(q.d3, nn.d3) & 0xFFFFFF;
   q.d4 = __subc_cc(q.d4, nn.d4) & 0xFFFFFF;
   q.d5 = __subc   (q.d5, nn.d5);
+#else
+  diff = (q.d2 - nn.d2);
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff & 0xFFFFFF;
+ 
+  diff = (q.d3 - nn.d3 - borrow);
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff & 0xFFFFFF;
+  
+  diff = (q.d4 - nn.d4 - borrow);
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff & 0xFFFFFF;
+  
+  diff = (q.d5 - nn.d5 - borrow);
+  q.d5 = diff & 0xFFFFFF;
+
+#endif
 
 /********** Step 2, Offset 2^31 (1*24 + 7) **********/
   qf= __uint2float_rn(q.d5);
@@ -249,6 +288,7 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
 #endif  
 
 /* q = q - nn */
+#ifdef __HIP_PLATFORM_NVIDIA__
 /* subtraction using sub.cc.u32, subc.cc.u32 and subc.u32 instructions */
   q.d1 = __sub_cc (q.d1, nn.d1) & 0xFFFFFF;
   q.d2 = __subc_cc(q.d2, nn.d2) & 0xFFFFFF;
@@ -258,6 +298,26 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
 #else
   q.d4 = __subc_cc(q.d4, nn.d4) & 0xFFFFFF;
   q.d5 = __subc   (q.d5, nn.d5);
+#endif
+#else
+  diff = (q.d1 - nn.d1);
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff & 0xFFFFFF;
+
+  diff = (q.d2 - nn.d2 - borrow);
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff & 0xFFFFFF;
+  
+  diff = (q.d3 - nn.d3 - borrow);
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff & 0xFFFFFF;
+  
+  diff = (q.d4 - nn.d4 - borrow);
+  borrow = diff > q.d4 ? 1 : 0;
+  q.d4 = diff & 0xFFFFFF;
+  
+  diff = (q.d5 - nn.d5 - borrow);
+  q.d5 = diff & 0xFFFFFF;
 #endif
 
 /********** Step 3, Offset 2^11 (0*24 + 11) **********/
@@ -274,10 +334,31 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   MODBASECASE_QI_ERROR(1<<22, 3, qi, 4);
 
 //nn = n * qi, shiftleft is done later
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d0 =                                      __umul24(n.d0, qi)               & 0xFFFFFF;
   nn.d1 = __add_cc (__umul24hi(n.d0, qi) >> 8, __umul24(n.d1, qi) | 0xFF000000) & 0xFFFFFF;
   nn.d2 = __addc_cc(__umul24hi(n.d1, qi) >> 8, __umul24(n.d2, qi) | 0xFF000000) & 0xFFFFFF;
   nn.d3 = __addc   (__umul24hi(n.d2, qi) >> 8, 0);
+#else
+  //unsigned int sum;
+  //int carry;
+  nn.d0 = __umul24(n.d0, qi) & 0xFFFFFF;
+
+  m0 = __umul24hi(n.d0, qi) >> 8;
+  m1 = __umul24(n.d1, qi) | 0xFF000000;
+  sum = m0 + m1;
+  carry = sum < m0 ? 1 : 0;
+  nn.d1 = sum & 0xFFFFFF;
+  
+  m0 = __umul24hi(n.d1, qi) >> 8;
+  m1 = __umul24(n.d2, qi) | 0xFF000000;
+  sum = m0 + m1 + carry;
+  carry = sum < m0 ? 1 : 0;
+  nn.d2 = sum & 0xFFFFFF;
+
+  sum = (__umul24hi(n.d2, qi) >> 8) + carry;
+  nn.d3 = sum;
+#endif
 
 // shiftleft 11 bits
 #ifdef DEBUG_GPU_MATH
@@ -291,6 +372,7 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   nn.d0 = ((nn.d0 & 0x1FFF)<<11);
   
 /*  q = q - nn */
+#ifdef __HIP_PLATFORM_NVIDIA__
 /* subtraction using sub.cc.u32, subc.cc.u32 and subc.u32 instructions */
   q.d0 = __sub_cc (q.d0, nn.d0) & 0xFFFFFF;
   q.d1 = __subc_cc(q.d1, nn.d1) & 0xFFFFFF;
@@ -300,6 +382,26 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
 #else
   q.d3 = __subc_cc(q.d3, nn.d3) & 0xFFFFFF;
   q.d4 = __subc   (q.d4, nn.d4);
+#endif
+#else
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff & 0xFFFFFF;
+  
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff & 0xFFFFFF;
+  
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff & 0xFFFFFF;
+  
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff & 0xFFFFFF;
+  
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
 #endif
 
 /********** Step 4, Offset 2^0 (0*24 + 0) **********/
@@ -315,6 +417,7 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
 
   MODBASECASE_QI_ERROR(1<<22, 4, qi, 7);
 
+#ifdef __HIP_PLATFORM_NVIDIA__
   nn.d0 =                                      __umul24(n.d0, qi)               & 0xFFFFFF;
   nn.d1 = __add_cc (__umul24hi(n.d0, qi) >> 8, __umul24(n.d1, qi) | 0xFF000000) & 0xFFFFFF;
 #ifndef DEBUG_GPU_MATH  
@@ -323,8 +426,27 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   nn.d2 = __addc_cc(__umul24hi(n.d1, qi) >> 8, __umul24(n.d2, qi) | 0xFF000000) & 0xFFFFFF;
   nn.d3 = __addc   (__umul24hi(n.d2, qi) >> 8, 0);
 #endif
+#else
+  nn.d0 = __umul24(n.d0, qi) & 0xFFFFFF;
+
+  m0 = __umul24hi(n.d0, qi) >> 8;
+  m1 = __umul24(n.d1, qi) | 0xFF000000;
+  sum = m0 + m1;
+  carry = sum < m0 ? 1 : 0;
+  nn.d1 = sum & 0xFFFFFF;
+
+  m0 = __umul24hi(n.d1, qi) >> 8;
+  m1 = __umul24(n.d2, qi) | 0xFF000000;
+  sum = m0 + m1 + carry;
+  carry = sum < m0 ? 1 : 0;
+  nn.d2 = sum & 0xFFFFFF;
+
+  sum = (__umul24hi(n.d2, qi) >> 8) + carry;
+  nn.d3 = sum;
+#endif
 
 /* q = q - nn */
+#ifdef __HIP_PLATFORM_NVIDIA__
 /* subtraction using sub.cc.u32, subc.cc.u32 and subc.u32 instructions */
   q.d0 = __sub_cc (q.d0, nn.d0) & 0xFFFFFF;
   q.d1 = __subc_cc(q.d1, nn.d1) & 0xFFFFFF;
@@ -334,7 +456,28 @@ __device__ static void mod_144_72(int72 *res, int144 q, int72 n, float nf, unsig
   q.d2 = __subc_cc(q.d2, nn.d2) & 0xFFFFFF;
   q.d3 = __subc   (q.d3, nn.d3);
 #endif
+#else
 
+  diff = q.d0 - nn.d0;
+  borrow = diff > q.d0 ? 1 : 0;
+  q.d0 = diff & 0xFFFFFF;
+
+  diff = q.d1 - nn.d1 - borrow;
+  borrow = diff > q.d1 ? 1 : 0;
+  q.d1 = diff & 0xFFFFFF;
+
+  diff = q.d2 - nn.d2 - borrow;
+  borrow = diff > q.d2 ? 1 : 0;
+  q.d2 = diff & 0xFFFFFF;
+
+  diff = q.d3 - nn.d3 - borrow;
+  borrow = diff > q.d3 ? 1 : 0;
+  q.d3 = diff & 0xFFFFFF;
+
+  diff = q.d4 - nn.d4 - borrow;
+  q.d4 = diff;
+
+ #endif
 
   res->d0=q.d0;
   res->d1=q.d1;
